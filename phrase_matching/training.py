@@ -51,12 +51,13 @@ class Trainer:
 
     def __init__(self, model_name, model, criterion, optimizer, 
                  lr_scheduler=None, metrics_dict=None, task="classification", 
-                 allow_dynamic_padding=False, grad_accum_iter=1, device="cuda"):
+                 allow_dynamic_padding=False, grad_accum_iter=1, pad_token_id=0, device="cuda"):
 
         assert task in ["classification", "regression"], "Task must be one of 'classification', 'regression'"
 
         self.task = task
         self.model_name = model_name
+        self.pad_token_id = pad_token_id
         self.allow_dynamic_padding = allow_dynamic_padding
         
         self.model = model
@@ -87,7 +88,7 @@ class Trainer:
             progress_bar.set_description(f"Epoch {epoch+1}".ljust(25))
             for step, batch in progress_bar:
                 if self.allow_dynamic_padding:
-                    batch = dynamic_padding(batch)
+                    batch = dynamic_padding(batch, self.pad_token_id)
                     
                 total_train_loss += self.train_one_step(step, batch, total_steps=total_steps)
                 
@@ -110,7 +111,7 @@ class Trainer:
 
             for step, batch in progress_bar:
                 if self.allow_dynamic_padding:
-                    batch = dynamic_padding(batch)
+                    batch = dynamic_padding(batch, self.pad_token_id)
                     
                 total_valid_loss += self.validate_one_step(batch)
                 current_loss = total_valid_loss / step

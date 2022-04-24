@@ -93,7 +93,8 @@ if __name__ == "__main__":
             task=cfg.task,
             device=cfg.device,
             allow_dynamic_padding=cfg.allow_dynamic_padding,
-            grad_accum_iter=cfg.grad_accum_iter
+            grad_accum_iter=cfg.grad_accum_iter,
+            pad_token_id=tokenizer.pad_token_id
         )
         
         trainer.fit(

@@ -9,13 +9,13 @@ import numpy as np
 import torch
 
 # Cell
-def dynamic_padding(batch):
-    padding_idx = np.argmax(batch["input_ids"].numpy() == 0, axis=1).max()
-
+def dynamic_padding(batch, pad_token_idx):
+    padding_idx = np.argmax(batch["input_ids"].numpy() == pad_token_idx, axis=1).max()
+    
     input_ids = batch["input_ids"][:, :padding_idx]
     attention_mask = batch["attention_mask"][:, :padding_idx]
     token_type_ids = batch["token_type_ids"][:, :padding_idx]
-
+    
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
