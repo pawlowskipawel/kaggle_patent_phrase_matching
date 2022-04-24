@@ -52,7 +52,7 @@ class Backbone(nn.Module):
             return output
 
         else:
-            pooled_output, output = self.net(input_ids, attention_mask, token_type_ids)
+            output, pooled_output = self.net(input_ids, attention_mask, token_type_ids)
 
             if self.pool_backbone_output:
                 return pooled_output
