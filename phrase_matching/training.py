@@ -11,6 +11,7 @@ import torch.optim as optim
 import torch.nn as nn
 import numpy as np
 import torch
+import wandb
 import os
 
 # Cell
@@ -51,9 +52,12 @@ class Trainer:
 
     def __init__(self, model_name, model, criterion, optimizer, 
                  lr_scheduler=None, metrics_dict=None, task="classification", 
-                 allow_dynamic_padding=False, grad_accum_iter=1, pad_token_id=0, device="cuda"):
+                 allow_dynamic_padding=False, grad_accum_iter=1, pad_token_id=0, 
+                 wandb_log=False, device="cuda"):
 
         assert task in ["classification", "regression"], "Task must be one of 'classification', 'regression'"
+
+        self.wandb_log = wandb_log
 
         self.task = task
         self.model_name = model_name
@@ -78,7 +82,21 @@ class Trainer:
             **{metric_name: f"{metric.get_metric():.3f}" for metric_name, metric in self.metrics_dict.items()}
         }
     
-    def train_one_epoch(self, epoch, dataloader):
+    def build_log_metric(self, step, loss, stage, fold_i=None):
+        fold = f"_fold_{fold_i}" if fold_i is not None else ""
+        
+        metrics = {
+            f"{stage}/step": step,
+            **{f"{stage}/{stage}_{metric_name}" + fold: metric.get_metric() for metric_name, metric in self.metrics_dict.items()},
+            **{f"{stage}/{stage}_loss" + fold: loss},
+        }
+        
+        if stage == "train" and self.lr_scheduler is not None:
+            metrics[f"{stage}/{stage}_lr" + fold] = self.lr_scheduler.get_last_lr()[0]
+        
+        return metrics
+    
+    def train_one_epoch(self, epoch, dataloader, fold_i=None):
         self.model.train()
 
         total_steps = len(dataloader)
@@ -96,12 +114,19 @@ class Trainer:
                     current_loss = total_train_loss / (step / self.grad_accum_iter)
                     progress_bar.set_postfix(self.get_postfix(current_loss, "train"))
                 
+                    if self.wandb_log:
+                        current_step = (total_steps // self.grad_accum_iter) * epoch + (step // self.grad_accum_iter)
+                        current_loss = total_train_loss / (step // self.grad_accum_iter)
+                        
+                        metrics = self.build_log_metric(current_step, current_loss, "train", fold_i)
+                        wandb.log(metrics)
+                        
         total_train_loss /= len(dataloader)
 
         return total_train_loss
 
     @torch.no_grad()
-    def validate_one_epoch(self, epoch, dataloader):
+    def validate_one_epoch(self, epoch, dataloader, fold_i=None):
         self.model.eval()
 
         total_valid_loss = 0
@@ -118,7 +143,14 @@ class Trainer:
                 progress_bar.set_postfix(self.get_postfix(current_loss, "valid"))
 
         total_valid_loss = total_valid_loss / len(dataloader)
-
+        
+        if self.wandb_log:
+            current_step = epoch
+            current_loss = total_valid_loss
+            
+            metrics = self.build_log_metric(current_step, current_loss, "valid", fold_i)
+            wandb.log(metrics)
+            
         return total_valid_loss
 
     def process_batch(self, batch):
@@ -177,36 +209,51 @@ class Trainer:
             for _, metric in self.metrics_dict.items():
                 metric.update(logits, labels)
         
-        return batch_loss
+        return batch_loss.item()
 
 
     def fit(self, epochs, train_dataloader, valid_dataloader, save_path="trained_models", fold_i=None):
-
+        
         if save_path:
-            save_path += f"/{self.model_name}"
+            save_path_pearson = f"{save_path}_pearson/{self.model_name}"
+            if not os.path.exists(save_path_pearson):
+                os.makedirs(save_path_pearson)
+            
+            save_path_pearson += f"/fold{fold_i}_best_pearson.pth"
 
+            save_path += f"/{self.model_name}"
+        
             if not os.path.exists(save_path):
                 os.makedirs(save_path)
-
+            
             save_path += f"/fold{fold_i}_best_state_dict.pth"
-
+            
         best_valid_loss = np.inf
+        best_pearson = -1
 
         for epoch in range(epochs):
-            epoch_loss = self.train_one_epoch(epoch, train_dataloader)
-
+            epoch_loss = self.train_one_epoch(epoch, train_dataloader, fold_i)
+            
+            
             if self.metrics_dict:
-
+                
                 for _, metric in self.metrics_dict.items():
                     metric.reset()
-
-            valid_loss = self.validate_one_epoch(epoch, valid_dataloader)
-
+                    
+            valid_loss = self.validate_one_epoch(epoch, valid_dataloader, fold_i)
+            
+            
             if save_path:
                 if valid_loss < best_valid_loss:
                     best_valid_loss = valid_loss
                     torch.save(self.model.state_dict(), save_path)
 
+                if self.metrics_dict and self.metrics_dict["pearson_corr"].get_metric() > best_pearson:
+                    best_pearson = self.metrics_dict["pearson_corr"].get_metric()
+                    torch.save(self.model.state_dict(), save_path_pearson)
+                
             if self.metrics_dict:
                 for _, metric in self.metrics_dict.items():
                     metric.reset()
+        
+        return best_pearson, best_valid_loss

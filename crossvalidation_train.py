@@ -13,6 +13,7 @@ from phrase_matching.data import PhraseDataset
 from phrase_matching.conf import parse_cfg
 
 import random
+import wandb
 import os
 import gc
 
@@ -27,11 +28,14 @@ def seed_everything(seed=7777):
 
 if __name__ == "__main__":
     seed_everything()
-    cfg = parse_cfg()
+    cfg, wandb_log = parse_cfg()
            
     df = pd.read_csv(cfg.TRAIN_DATA_PATH)
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
     metrics_dict = None if not hasattr(cfg, "metrics_dict") else cfg.metrics_dict
+    
+    pearson_corr_list = []
+    loss_list = []
     
     for fold_i in range(len(df["fold"].unique())): 
         if cfg.fold_to_run is not None:
@@ -72,6 +76,9 @@ if __name__ == "__main__":
         )
         model.to(cfg.device)
         
+        if wandb_log:
+            wandb.watch(model)
+            
         optimizer = get_optimizer(
             optimizer_name=cfg.optimizer_name,
             model=model,
@@ -94,10 +101,11 @@ if __name__ == "__main__":
             device=cfg.device,
             allow_dynamic_padding=cfg.allow_dynamic_padding,
             grad_accum_iter=cfg.grad_accum_iter,
-            pad_token_id=tokenizer.pad_token_id
+            pad_token_id=tokenizer.pad_token_id,
+            wandb_log=wandb_log
         )
         
-        trainer.fit(
+        fold_pearson, fold_loss = trainer.fit(
             epochs=cfg.epochs,
             train_dataloader=train_dataloader,
             valid_dataloader=valid_dataloader,
@@ -105,9 +113,16 @@ if __name__ == "__main__":
             fold_i=fold_i
         )
         
+        pearson_corr_list.append(fold_pearson)
+        loss_list.append(fold_loss)
+        
         del model, criterion, optimizer, lr_scheduler, trainer
         torch.cuda.empty_cache()
         gc.collect()
         
         if cfg.fold_to_run is not None:
             break
+    
+    if wandb_log:
+        wandb.run.summary["cv_pearson"] = np.array(pearson_corr_list).mean()
+        wandb.run.summary["cv_loss"] = np.array(loss_list).mean()
