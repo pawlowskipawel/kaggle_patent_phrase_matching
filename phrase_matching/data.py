@@ -12,27 +12,20 @@ import torch
 def dynamic_padding(batch, pad_token_idx):
     padding_idx = np.argmax(batch["input_ids"].numpy() == pad_token_idx, axis=1).max()
     
-    input_ids = batch["input_ids"][:, :padding_idx]
-    attention_mask = batch["attention_mask"][:, :padding_idx]
-    token_type_ids = batch["token_type_ids"][:, :padding_idx]
+    if padding_idx == 0:
+        return batch
+    batch["input_ids"] = batch["input_ids"][:, :padding_idx]
+    batch["attention_mask"] = batch["attention_mask"][:, :padding_idx]
+    batch["token_type_ids"] = batch["token_type_ids"][:, :padding_idx]
     
-    return {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "token_type_ids": token_type_ids,
-        "label": batch["label"]
-    } if "label" in batch else {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "token_type_ids": token_type_ids,
-    }
+    return batch
     
 # Cell
 class PhraseDataset(Dataset):
     def __init__(self, dataset_df, tokenizer, max_len=128, lowercase=True, mode="train_val", task="classification"):
         super().__init__()
 
-        assert task in ["classification", "regression"], "Wrong mode. Choose 'classification' or 'regression'"
+        assert task in ("classification", "regression"), "Wrong mode. Choose 'classification' or 'regression'"
         assert mode in ("train_val", "inference"), "Wrong mode. Choose 'inference' or 'train_val'"
 
         self._task = task

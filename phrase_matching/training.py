@@ -3,7 +3,7 @@
 __all__ = ['get_optimizer', 'Trainer']
 
 # Cell
-from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup
 from .data import dynamic_padding
 from tqdm import tqdm
 

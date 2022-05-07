@@ -23,6 +23,4 @@ def parse_cfg():
 
     args = importlib.import_module(parser_args.config).args
 
-    args["experiment_name"] = parser_args.config
-
     return SimpleNamespace(**args)
