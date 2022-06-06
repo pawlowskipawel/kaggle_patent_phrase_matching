@@ -1,4 +1,6 @@
-This is my baseline solution for the competition. The rest of the code will be written in private repository and publicly available after the competition.
+This is my baseline solution for the U.S. Patent Phrase to Phrase Matching competition. https://www.kaggle.com/competitions/us-patent-phrase-to-phrase-matching/ 
+
+The rest of the code will be written in private repository and publicly available after the competition.
 
 ```python crossvalidation_train.py -C dummy_config```
 
